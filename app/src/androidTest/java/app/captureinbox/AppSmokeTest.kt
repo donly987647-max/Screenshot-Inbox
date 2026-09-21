@@ -48,7 +48,7 @@ class AppSmokeTest {
         compose.onNodeWithText("첫 스크린샷 가져오기").assertIsDisplayed()
         record("01-empty")
         compose.onNodeWithText("예시로 둘러보기").performClick()
-        compose.waitUntil(20_000) { !model.busy && model.items.size >= 5 }
+        compose.waitUntil(20_000) { !model.busy && model.items.any { it.title == "모닝브루 아메리카노" } }
         compose.mainClock.advanceTimeBy(5_000)
         compose.waitForIdle()
         record("02-library")
