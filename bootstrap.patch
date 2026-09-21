@@ -1,0 +1,125 @@
+--- a/app/src/main/java/app/captureinbox/MainActivity.kt
++++ b/app/src/main/java/app/captureinbox/MainActivity.kt
+@@ -98,7 +98,7 @@
+                 } catch (e: CancellationException) { throw e }
+                   catch (e: Exception) { failed++; lastError = e.message }
+             }
+-            notice = "$added개 저장 · $duplicate개 중복" + (if (failed > 0) " · $failed개 실패: ${lastError.orEmpty()}" else "") + (if (uris.size > 20) " · 한 번에 20개까지 선택해 주세요." else "")
++            notice = "${added}개 저장 · ${duplicate}개 중복" + (if (failed > 0) " · ${failed}개 실패: ${lastError.orEmpty()}" else "") + (if (uris.size > 20) " · 한 번에 20개까지 선택해 주세요." else "")
+         }
+     }
+     fun save(c: Capture, message: String = "저장했어요.") = action("저장하는 중") { repository.save(c); selectedId = null; draft = null; notice = message }
+@@ -279,6 +279,7 @@
+     val clipboard = LocalClipboardManager.current
+     var title by rememberSaveable(c.id) { mutableStateOf(c.title) }
+     var body by rememberSaveable(c.id) { mutableStateOf(c.text) }
++    var price by rememberSaveable(c.id) { mutableStateOf(c.price.orEmpty()) }
+     var date by rememberSaveable(c.id) { mutableStateOf(c.date.orEmpty()) }
+     var confirmed by rememberSaveable(c.id) { mutableStateOf(c.dateConfirmed) }
+     var reminder by rememberSaveable(c.id) { mutableIntStateOf(c.remindDays ?: -1) }
+@@ -294,7 +295,7 @@
+         if (title.isBlank()) { error = "제목을 입력해 주세요."; return }
+         if (date.isNotBlank() && validDate == null) { error = "날짜는 실제 존재하는 YYYY-MM-DD 형식이어야 해요."; return }
+         if (url.isNotBlank() && CaptureParser.safeUrl(url.trim()) == null) { error = "http 또는 https로 시작하는 올바른 링크를 입력해 주세요."; return }
+-        onSave(c.copy(title = title.trim(), text = body, category = Category.valueOf(category), date = date.trim().ifEmpty { null }, dateConfirmed = confirmed && validDate != null,
++        onSave(c.copy(title = title.trim(), text = body, price = price.trim().ifEmpty { null }, category = Category.valueOf(category), date = date.trim().ifEmpty { null }, dateConfirmed = confirmed && validDate != null,
+             remindDays = reminder.takeIf { it >= 0 && canRemind }, location = location.trim().ifEmpty { null }, url = url.trim().ifEmpty { null }, warning = if (confirmed) null else c.warning))
+     }
+     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
+@@ -305,7 +306,7 @@
+                 Button(onClick = ::save, enabled = !busy) { Text("저장") }
+             }
+             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+-                if (c.imageName != null) AsyncImage(repository.imageFile(c), "원본 스크린샷", Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp), contentScale = ContentScale.Fit)
++                if (c.imageName != null) OriginalPreview(repository.imageFile(c))
+                 if (c.sample) Text("이 카드는 앱 사용 흐름을 보여 주는 예시예요. 실제 사용 가능한 쿠폰이나 예약이 아닙니다.", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                 c.warning?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+@@ -330,6 +331,7 @@
+                         .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, validDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+                         .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, validDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()))
+                 }) { Icon(Icons.Outlined.CalendarToday, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("캘린더에 추가") }
++                OutlinedTextField(price, { price = it.take(100) }, label = { Text("가격 (선택)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))
+                 OutlinedTextField(location, { location = it.take(500) }, label = { Text("장소 (선택)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))
+                 OutlinedTextField(url, { url = it.take(2048) }, label = { Text("링크 (선택)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))
+                 if (CaptureParser.safeUrl(url.trim()) != null) TextButton(onClick = { launchExternal(Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()))) }) { Icon(Icons.Outlined.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("링크 열기") }
+--- a/app/src/main/java/app/captureinbox/CaptureRepository.kt
++++ b/app/src/main/java/app/captureinbox/CaptureRepository.kt
+@@ -204,10 +204,11 @@
+         mutex.withLock {
+             val items = readLocked()
+             val files = items.mapNotNull { c -> imageFile(c)?.also { require(it.isFile) { "누락된 원본 이미지가 있어 백업을 중단했어요." } } }.distinctBy { it.name }
+-            require(files.sumOf { it.length() } <= MAX_BACKUP) { "백업은 현재 200MB까지 지원해요." }
++            val metadataBytes = encode(items).toByteArray(Charsets.UTF_8)
++            require(files.sumOf { it.length() } + metadataBytes.size <= MAX_BACKUP) { "백업은 현재 200MB까지 지원해요." }
+             val output = context.contentResolver.openOutputStream(uri) ?: throw IOException("백업 파일을 만들지 못했어요.")
+             ZipOutputStream(output).use { zip ->
+-                zip.putNextEntry(ZipEntry("library.json")); zip.write(encode(items).toByteArray(Charsets.UTF_8)); zip.closeEntry()
++                zip.putNextEntry(ZipEntry("library.json")); zip.write(metadataBytes); zip.closeEntry()
+                 files.forEach { file -> zip.putNextEntry(ZipEntry("images/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
+             }
+         }
+--- /dev/null
++++ b/app/src/main/java/app/captureinbox/OriginalPreview.kt
+@@ -0,0 +1,61 @@
++package app.captureinbox
++
++import androidx.compose.foundation.background
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.gestures.detectTransformGestures
++import androidx.compose.foundation.layout.*
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.outlined.Close
++import androidx.compose.material.icons.outlined.ZoomIn
++import androidx.compose.material.icons.outlined.ZoomOut
++import androidx.compose.material3.*
++import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.clipToBounds
++import androidx.compose.ui.geometry.Offset
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.graphics.graphicsLayer
++import androidx.compose.ui.input.pointer.pointerInput
++import androidx.compose.ui.layout.ContentScale
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.window.Dialog
++import androidx.compose.ui.window.DialogProperties
++import coil.compose.AsyncImage
++import java.io.File
++
++@Composable
++fun OriginalPreview(file: File?) {
++    var expanded by remember { mutableStateOf(false) }
++    Column {
++        AsyncImage(file, "원본 스크린샷. 눌러서 확대", Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp).clickable { expanded = true }, contentScale = ContentScale.Fit)
++        TextButton(onClick = { expanded = true }) { Icon(Icons.Outlined.ZoomIn, null); Spacer(Modifier.width(6.dp)); Text("원본 크게 보기") }
++    }
++    if (expanded) Dialog(onDismissRequest = { expanded = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
++        var scale by remember { mutableFloatStateOf(1f) }
++        var offset by remember { mutableStateOf(Offset.Zero) }
++        Surface(Modifier.fillMaxSize(), color = Color(0xFF101916)) {
++            Column(Modifier.fillMaxSize().safeDrawingPadding()) {
++                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
++                    Text("원본 스크린샷", color = Color.White, modifier = Modifier.weight(1f))
++                    IconButton(onClick = { expanded = false }) { Icon(Icons.Outlined.Close, "원본 닫기", tint = Color.White) }
++                }
++                Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().pointerInput(Unit) {
++                    detectTransformGestures { _, pan, zoom, _ ->
++                        scale = (scale * zoom).coerceIn(1f, 8f)
++                        val maxX = size.width * (scale - 1f) / 2f
++                        val maxY = size.height * (scale - 1f) / 2f
++                        offset = Offset((offset.x + pan.x).coerceIn(-maxX, maxX), (offset.y + pan.y).coerceIn(-maxY, maxY))
++                    }
++                }) {
++                    AsyncImage(file, "확대 가능한 원본", Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y }, contentScale = ContentScale.Fit)
++                }
++                Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
++                    IconButton(onClick = { scale = (scale / 1.5f).coerceAtLeast(1f); offset = Offset.Zero }) { Icon(Icons.Outlined.ZoomOut, "축소", tint = Color.White) }
++                    TextButton(onClick = { scale = 1f; offset = Offset.Zero }) { Text("${(scale * 100).toInt()}% · 초기화", color = Color.White) }
++                    IconButton(onClick = { scale = (scale * 1.5f).coerceAtMost(8f) }) { Icon(Icons.Outlined.ZoomIn, "확대", tint = Color.White) }
++                }
++            }
++        }
++    }
++}

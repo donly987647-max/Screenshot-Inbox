@@ -27,44 +27,29 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
           log-accepted-android-sdk-licenses: false
-      - name: Materialize verified source bundle (one time)
+      - name: Apply verified implementation fixes (one time)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
-          if [ -f bootstrap.1 ] && [ -f bootstrap.2 ]; then
-            python - <<'PY'
-          import hashlib, json, lzma
-          from pathlib import Path, PurePosixPath
-          raw = Path('bootstrap.1').read_bytes() + Path('bootstrap.2').read_bytes()
-          expected = '4ead11c898b4c388008f02e44dac67b2805c35fa0891bbdf58228110db42e7c9'
-          assert hashlib.sha256(raw).hexdigest() == expected, 'Source checksum mismatch'
-          decoder = lzma.LZMADecompressor()
-          data = decoder.decompress(raw, max_length=2000001)
-          assert decoder.eof and not decoder.unused_data and len(data) <= 2000000
-          files = json.loads(data)
-          assert isinstance(files, dict) and 0 < len(files) <= 50
-          root = Path.cwd().resolve()
-          for name, content in files.items():
-              relative = PurePosixPath(name)
-              assert not relative.is_absolute() and '..' not in relative.parts
-              assert '.github' not in relative.parts and '.git' not in relative.parts
-              assert isinstance(content, str) and len(content) <= 200000
-              destination = root.joinpath(*relative.parts).resolve()
-              assert root in destination.parents
-          for name, content in files.items():
-              destination = root.joinpath(*PurePosixPath(name).parts)
-              destination.parent.mkdir(parents=True, exist_ok=True)
-              destination.write_text(content, encoding='utf-8')
-          print('Verified and materialized', len(files), 'source files')
-          PY
-            gradle --no-daemon wrapper --gradle-version 8.14.3 --distribution-type bin
+          if [ -f bootstrap.patch ]; then
+            echo '8fcf680d135c65688b930872374579fb161d96161efdb9e082de9bfcc2d6ecb2  bootstrap.patch' | sha256sum --check
+            git apply --check bootstrap.patch
+            git apply bootstrap.patch
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add .gitignore README.md app docs tools settings.gradle.kts build.gradle.kts gradle.properties gradlew gradlew.bat gradle/wrapper
-            git rm bootstrap.1 bootstrap.2
-            git commit -m 'feat: implement offline Android Screenshot Inbox'
+            git add app/src/main/java/app/captureinbox/MainActivity.kt app/src/main/java/app/captureinbox/CaptureRepository.kt app/src/main/java/app/captureinbox/OriginalPreview.kt
+            git rm bootstrap.patch
+            git commit -m 'fix: compile Korean status text and refine original image editing'
             git push origin HEAD:main
           fi
+      - name: Package exact source
+        run: git archive --format=zip --prefix=Screenshot-Inbox/ --output=Screenshot-Inbox-source-v0.1.0.zip HEAD
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Screenshot-Inbox-source-v0.1.0
+          path: Screenshot-Inbox-source-v0.1.0.zip
+          if-no-files-found: error
       - name: Unit tests, lint and debug APK
         run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
       - name: Verify APK cannot access the Internet
