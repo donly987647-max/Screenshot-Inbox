@@ -5,7 +5,7 @@ on:
   pull_request:
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
@@ -27,21 +27,6 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
           log-accepted-android-sdk-licenses: false
-      - name: Apply verified implementation fixes (one time)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        shell: bash
-        run: |
-          if [ -f bootstrap.patch ]; then
-            echo '8fcf680d135c65688b930872374579fb161d96161efdb9e082de9bfcc2d6ecb2  bootstrap.patch' | sha256sum --check
-            git apply --check bootstrap.patch
-            git apply bootstrap.patch
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add app/src/main/java/app/captureinbox/MainActivity.kt app/src/main/java/app/captureinbox/CaptureRepository.kt app/src/main/java/app/captureinbox/OriginalPreview.kt
-            git rm bootstrap.patch
-            git commit -m 'fix: compile Korean status text and refine original image editing'
-            git push origin HEAD:main
-          fi
       - name: Package exact source
         run: git archive --format=zip --prefix=Screenshot-Inbox/ --output=Screenshot-Inbox-source-v0.1.0.zip HEAD
       - name: Upload source
@@ -78,8 +63,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            gradle --no-daemon connectedDebugAndroidTest
-            adb pull /sdcard/Android/data/app.captureinbox/files/screenshots app/build/runtime-screenshots || true
+            bash -c 'set +e; gradle --no-daemon connectedDebugAndroidTest; status=$?; adb pull /sdcard/Android/data/app.captureinbox/files/screenshots app/build/runtime-screenshots || true; exit $status'
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
