@@ -36,7 +36,7 @@ jobs:
           path: Screenshot-Inbox-source-v0.1.0.zip
           if-no-files-found: error
       - name: Unit tests, lint and debug APK
-        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
+        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
       - name: Verify APK cannot access the Internet
         shell: bash
         run: |
@@ -63,7 +63,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            bash -c 'set +e; gradle --no-daemon connectedDebugAndroidTest; status=$?; adb pull /sdcard/Android/data/app.captureinbox/files/screenshots app/build/runtime-screenshots || true; exit $status'
+            bash tools/runtime-check.sh
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -72,5 +72,6 @@ jobs:
           path: |
             app/build/reports
             app/build/outputs/androidTest-results
+            app/build/runtime-checks
             app/build/runtime-screenshots
             app/build/apk-permissions.txt
