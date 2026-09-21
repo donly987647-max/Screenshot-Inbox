@@ -22,8 +22,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
-      - name: Install Android build platform
-        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
       - name: Materialize verified source bundle (one time)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
