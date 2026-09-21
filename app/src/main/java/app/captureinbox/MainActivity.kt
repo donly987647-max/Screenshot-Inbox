@@ -98,7 +98,7 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: CancellationException) { throw e }
                   catch (e: Exception) { failed++; lastError = e.message }
             }
-            notice = "$added개 저장 · $duplicate개 중복" + (if (failed > 0) " · $failed개 실패: ${lastError.orEmpty()}" else "") + (if (uris.size > 20) " · 한 번에 20개까지 선택해 주세요." else "")
+            notice = "${added}개 저장 · ${duplicate}개 중복" + (if (failed > 0) " · ${failed}개 실패: ${lastError.orEmpty()}" else "") + (if (uris.size > 20) " · 한 번에 20개까지 선택해 주세요." else "")
         }
     }
     fun save(c: Capture, message: String = "저장했어요.") = action("저장하는 중") { repository.save(c); selectedId = null; draft = null; notice = message }
@@ -279,6 +279,7 @@ private fun CaptureEditor(c: Capture, repository: CaptureRepository, busy: Boole
     val clipboard = LocalClipboardManager.current
     var title by rememberSaveable(c.id) { mutableStateOf(c.title) }
     var body by rememberSaveable(c.id) { mutableStateOf(c.text) }
+    var price by rememberSaveable(c.id) { mutableStateOf(c.price.orEmpty()) }
     var date by rememberSaveable(c.id) { mutableStateOf(c.date.orEmpty()) }
     var confirmed by rememberSaveable(c.id) { mutableStateOf(c.dateConfirmed) }
     var reminder by rememberSaveable(c.id) { mutableIntStateOf(c.remindDays ?: -1) }
@@ -294,7 +295,7 @@ private fun CaptureEditor(c: Capture, repository: CaptureRepository, busy: Boole
         if (title.isBlank()) { error = "제목을 입력해 주세요."; return }
         if (date.isNotBlank() && validDate == null) { error = "날짜는 실제 존재하는 YYYY-MM-DD 형식이어야 해요."; return }
         if (url.isNotBlank() && CaptureParser.safeUrl(url.trim()) == null) { error = "http 또는 https로 시작하는 올바른 링크를 입력해 주세요."; return }
-        onSave(c.copy(title = title.trim(), text = body, category = Category.valueOf(category), date = date.trim().ifEmpty { null }, dateConfirmed = confirmed && validDate != null,
+        onSave(c.copy(title = title.trim(), text = body, price = price.trim().ifEmpty { null }, category = Category.valueOf(category), date = date.trim().ifEmpty { null }, dateConfirmed = confirmed && validDate != null,
             remindDays = reminder.takeIf { it >= 0 && canRemind }, location = location.trim().ifEmpty { null }, url = url.trim().ifEmpty { null }, warning = if (confirmed) null else c.warning))
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
@@ -305,7 +306,7 @@ private fun CaptureEditor(c: Capture, repository: CaptureRepository, busy: Boole
                 Button(onClick = ::save, enabled = !busy) { Text("저장") }
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (c.imageName != null) AsyncImage(repository.imageFile(c), "원본 스크린샷", Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp), contentScale = ContentScale.Fit)
+                if (c.imageName != null) OriginalPreview(repository.imageFile(c))
                 if (c.sample) Text("이 카드는 앱 사용 흐름을 보여 주는 예시예요. 실제 사용 가능한 쿠폰이나 예약이 아닙니다.", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
                 c.warning?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -330,6 +331,7 @@ private fun CaptureEditor(c: Capture, repository: CaptureRepository, busy: Boole
                         .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, validDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
                         .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, validDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()))
                 }) { Icon(Icons.Outlined.CalendarToday, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("캘린더에 추가") }
+                OutlinedTextField(price, { price = it.take(100) }, label = { Text("가격 (선택)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))
                 OutlinedTextField(location, { location = it.take(500) }, label = { Text("장소 (선택)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))
                 OutlinedTextField(url, { url = it.take(2048) }, label = { Text("링크 (선택)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))
                 if (CaptureParser.safeUrl(url.trim()) != null) TextButton(onClick = { launchExternal(Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()))) }) { Icon(Icons.Outlined.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("링크 열기") }

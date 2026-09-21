@@ -204,10 +204,11 @@ class CaptureRepository(context: Context) {
         mutex.withLock {
             val items = readLocked()
             val files = items.mapNotNull { c -> imageFile(c)?.also { require(it.isFile) { "누락된 원본 이미지가 있어 백업을 중단했어요." } } }.distinctBy { it.name }
-            require(files.sumOf { it.length() } <= MAX_BACKUP) { "백업은 현재 200MB까지 지원해요." }
+            val metadataBytes = encode(items).toByteArray(Charsets.UTF_8)
+            require(files.sumOf { it.length() } + metadataBytes.size <= MAX_BACKUP) { "백업은 현재 200MB까지 지원해요." }
             val output = context.contentResolver.openOutputStream(uri) ?: throw IOException("백업 파일을 만들지 못했어요.")
             ZipOutputStream(output).use { zip ->
-                zip.putNextEntry(ZipEntry("library.json")); zip.write(encode(items).toByteArray(Charsets.UTF_8)); zip.closeEntry()
+                zip.putNextEntry(ZipEntry("library.json")); zip.write(metadataBytes); zip.closeEntry()
                 files.forEach { file -> zip.putNextEntry(ZipEntry("images/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
             }
         }
