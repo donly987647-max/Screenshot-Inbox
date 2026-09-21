@@ -9,7 +9,7 @@
 - 사진 선택기 또는 **갤러리 공유 → 캡처함**으로 최대 20장 가져오기
 - 앱에 포함된 한국어 ML Kit 모델로 기기 내 글자 인식
 - 쿠폰·일정·상품·장소·메모 분류, 제목·날짜·가격·링크 추출
-- 원본 미리보기, 글자 검색, 분류 필터, 수정, 사용 완료, 원본 공유
+- 원본 미리보기·확대, 글자 검색, 분류 필터, 제목·가격·날짜 수정, 사용 완료, 원본 공유
 - 사용자가 확인한 날짜만 알림에 사용; 당일·1일 전·3일 전 선택
 - 캘린더 앱에 일정 추가, 글자 복사
 - 앱 전용 저장공간에 원본과 목록 보관, SHA-256 중복 감지
@@ -26,11 +26,11 @@ Android 8.0(API26)+ / compile·target SDK36 / JDK17 / Gradle8.14.3.
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-Gradle Wrapper가 없는 초기 소스 번들은 설치된 Gradle8.14.3으로 `gradle wrapper --gradle-version 8.14.3`을 먼저 실행합니다. GitHub 초기 빌드는 Wrapper를 생성해 저장소에 추가합니다.
+Gradle Wrapper를 저장소에 포함합니다. 사용 방법과 설치 안내는 `docs/QUICKSTART.md`에 있습니다.
 
 APK: `app/build/outputs/apk/debug/app-debug.apk`
 
-GitHub Actions는 단위 테스트·Lint·APK 빌드 후 Android15 에뮬레이터에서 화면 조작, 재실행 복원, 실제 한국어 OCR, 중복 방지, 백업/복원, 악성 ZIP 거부를 검사하도록 구성했습니다. **워크플로의 실제 결과를 확인하세요. 검사를 구성했다는 것은 통과했다는 의미가 아닙니다.**
+GitHub Actions는 단위 테스트·Lint·APK 빌드 후 Android15 에뮬레이터에서 화면 조작·편집, 저장 파일 재읽기, 실제 한국어 OCR, 중복 방지, 백업/복원, 악성 ZIP 거부를 검사하도록 구성했습니다. 2026-09-21 실행 `35557340363`에서 **단위 테스트 29개 + native 통합 검사 2개, APK 빌드가 통과**했습니다. Lint는 오류 0개·경고 17개입니다. 정확한 범위와 미검증 항목은 `docs/VALIDATION.md`를 확인하세요.
 
 ## 기술 구성
 
